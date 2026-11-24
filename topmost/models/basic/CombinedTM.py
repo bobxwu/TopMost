@@ -5,11 +5,12 @@ import numpy as np
 
 
 class CombinedTM(nn.Module):
-    def __init__(self, vocab_size, contextual_embed_size, num_topics=50, en_units=200, dropout=0.4):
+    def __init__(self, vocab_size, contextual_embed_size, num_topics=50, en_units=200, dropout=0.4, temperature=1.0):
         super().__init__()
 
         self.vocab_size = vocab_size
         self.num_topics = num_topics
+        self.temperature = temperature
 
         self.a = 1 * np.ones((1, num_topics)).astype(np.float32)
         self.mu2 = nn.Parameter(torch.as_tensor((np.log(self.a).T - np.mean(np.log(self.a), 1)).T))
@@ -78,7 +79,7 @@ class CombinedTM(nn.Module):
         return self.mean_bn(self.fc21(e1)), self.logvar_bn(self.fc22(e1))
 
     def decode(self, theta):
-        d1 = F.softmax(self.decoder_bn(self.fcd1(theta)), dim=1)
+        d1 = F.softmax(self.decoder_bn(self.fcd1(theta)) / self.temperature, dim=1)
         return d1
 
     def forward(self, x):

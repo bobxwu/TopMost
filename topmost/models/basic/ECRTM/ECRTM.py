@@ -11,8 +11,12 @@ class ECRTM(nn.Module):
 
         Xiaobao Wu, Xinshuai Dong, Thong Thanh Nguyen, Anh Tuan Luu.
     '''
-    def __init__(self, vocab_size, num_topics=50, en_units=200, dropout=0., pretrained_WE=None, embed_size=200, beta_temp=0.2, weight_loss_ECR=100.0, sinkhorn_alpha=20.0, sinkhorn_max_iter=1000):
+    def __init__(self, vocab_size, num_topics=50, en_units=200, dropout=0., pretrained_WE=None, embed_size=200, beta_temp=0.2, weight_loss_ECR=100.0, sinkhorn_alpha=20.0, sinkhorn_max_iter=1000, contextual_embed_size=None, temperature=1.0):
         super().__init__()
+
+        self.vocab_size = vocab_size
+        self.contextual_embed_size = contextual_embed_size
+        self.temperature = temperature
 
         self.num_topics = num_topics
         self.beta_temp = beta_temp
@@ -24,7 +28,7 @@ class ECRTM(nn.Module):
         self.mu2.requires_grad = False
         self.var2.requires_grad = False
 
-        self.fc11 = nn.Linear(vocab_size, en_units)
+        self.fc11 = nn.Linear(contextual_embed_size or vocab_size, en_units)
         self.fc12 = nn.Linear(en_units, en_units)
         self.fc21 = nn.Linear(en_units, num_topics)
         self.fc22 = nn.Linear(en_units, num_topics)
@@ -63,8 +67,15 @@ class ECRTM(nn.Module):
         else:
             return mu
 
+    def split_input(self, x):
+        # With `contextual_embed_size`, a batch is [target (vocab_size) | document embedding]:
+        # the encoder reads the embedding and the decoder reconstructs the target.
+        if self.contextual_embed_size is None:
+            return x, x
+        return x[:, self.vocab_size:], x[:, :self.vocab_size]
+
     def encode(self, input):
-        e1 = F.softplus(self.fc11(input))
+        e1 = F.softplus(self.fc11(self.split_input(input)[0]))
         e1 = F.softplus(self.fc12(e1))
         e1 = self.fc1_dropout(e1)
         mu = self.mean_bn(self.fc21(e1))
@@ -107,8 +118,8 @@ class ECRTM(nn.Module):
         theta, loss_KL = self.encode(input)
         beta = self.get_beta()
 
-        recon = F.softmax(self.decoder_bn(torch.matmul(theta, beta)), dim=-1)
-        recon_loss = -(input * recon.log()).sum(axis=1).mean()
+        recon = F.softmax(self.decoder_bn(torch.matmul(theta, beta)) / self.temperature, dim=-1)
+        recon_loss = -(self.split_input(input)[1] * recon.log()).sum(axis=1).mean()
 
         loss_TM = recon_loss + loss_KL
 

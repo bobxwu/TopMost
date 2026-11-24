@@ -99,6 +99,7 @@ TopMost offers the following topic modeling scenarios with models, evaluation me
 |                              | | BERTopic_   |                                            |                 |
 |                              | | ECRTM_      |                                            |                 |
 |                              | | FASTopic_   |                                            |                 |
+|                              | | DSL_        |                                            |                 |
 +------------------------------+---------------+--------------------------------------------+-----------------+
 |                              |               |                                            | | 20NG          |
 |                              | | HDP_        | | TC over levels                           | | IMDB          |
@@ -194,6 +195,27 @@ Train a model
     trainer = topmost.BasicTrainer(model, dataset)
 
     # train the model
+    top_words, train_theta = trainer.train()
+
+
+Train on soft labels from a language model (DSL)
+---------------------------------------------------
+
+DSL_ replaces the bag-of-words target with the next-token distribution of a small language model that is asked for the document's theme, and feeds the model the language model's last hidden state.
+``DSLDataset`` prepares both, and the models that accept ``contextual_embed_size`` (``ProdLDA``, ``DecTM``, ``ECRTM``) then train on them with ``BasicTrainer`` as usual. ``CombinedTM`` works without changes.
+
+.. code-block:: python
+
+    import topmost
+    from topmost import Preprocess, DSLDataset
+
+    docs = [...]  # raw documents
+    dataset = DSLDataset(docs, Preprocess(vocab_size=2000), model_name="baidu/ERNIE-4.5-0.3B-PT", device=device)
+
+    model = topmost.ECRTM(dataset.vocab_size, contextual_embed_size=dataset.contextual_embed_size, temperature=dataset.temperature)
+    model = model.to(device)
+
+    trainer = topmost.BasicTrainer(model, dataset)
     top_words, train_theta = trainer.train()
 
 
@@ -383,6 +405,7 @@ Related Resources
 .. _TSCTM: https://aclanthology.org/2022.emnlp-main.176/
 .. _ECRTM: https://arxiv.org/pdf/2306.04217.pdf
 .. _FASTopic: https://arxiv.org/pdf/2405.17978
+.. _DSL: https://proceedings.mlr.press/v306/li26a.html
 
 .. _HDP: https://people.eecs.berkeley.edu/~jordan/papers/hdp.pdf
 .. _SawETM: http://proceedings.mlr.press/v139/duan21b/duan21b.pdf
