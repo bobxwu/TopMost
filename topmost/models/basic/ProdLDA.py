@@ -12,10 +12,13 @@ class ProdLDA(nn.Module):
 
         Akash Srivastava, Charles Sutton.
     '''
-    def __init__(self, vocab_size, num_topics=50, en_units=200, dropout=0.4):
+    def __init__(self, vocab_size, num_topics=50, en_units=200, dropout=0.4, contextual_embed_size=None, temperature=1.0):
         super().__init__()
 
+        self.vocab_size = vocab_size
         self.num_topics = num_topics
+        self.contextual_embed_size = contextual_embed_size
+        self.temperature = temperature
 
         self.a = 1 * np.ones((1, num_topics)).astype(np.float32)
         self.mu2 = nn.Parameter(torch.as_tensor((np.log(self.a).T - np.mean(np.log(self.a), 1)).T))
@@ -24,7 +27,7 @@ class ProdLDA(nn.Module):
         self.mu2.requires_grad = False
         self.var2.requires_grad = False
 
-        self.fc11 = nn.Linear(vocab_size, en_units)
+        self.fc11 = nn.Linear(contextual_embed_size or vocab_size, en_units)
         self.fc12 = nn.Linear(en_units, en_units)
         self.fc21 = nn.Linear(en_units, num_topics)
         self.fc22 = nn.Linear(en_units, num_topics)
@@ -53,8 +56,15 @@ class ProdLDA(nn.Module):
     def get_beta(self):
         return self.fcd1.weight.T
 
+    def split_input(self, x):
+        # With `contextual_embed_size`, a batch is [target (vocab_size) | document embedding]:
+        # the encoder reads the embedding and the decoder reconstructs the target.
+        if self.contextual_embed_size is None:
+            return x, x
+        return x[:, self.vocab_size:], x[:, :self.vocab_size]
+
     def get_theta(self, x):
-        mu, logvar = self.encode(x)
+        mu, logvar = self.encode(self.split_input(x)[0])
         z = self.reparameterize(mu, logvar)
         theta = F.softmax(z, dim=1)
         theta = self.theta_drop(theta)
@@ -78,13 +88,13 @@ class ProdLDA(nn.Module):
         return self.mean_bn(self.fc21(e1)), self.logvar_bn(self.fc22(e1))
 
     def decode(self, theta):
-        d1 = F.softmax(self.decoder_bn(self.fcd1(theta)), dim=1)
+        d1 = F.softmax(self.decoder_bn(self.fcd1(theta)) / self.temperature, dim=1)
         return d1
 
     def forward(self, x):
         theta, mu, logvar = self.get_theta(x)
         recon_x = self.decode(theta)
-        loss = self.loss_function(x, recon_x, mu, logvar)
+        loss = self.loss_function(self.split_input(x)[1], recon_x, mu, logvar)
         return {'loss': loss}
 
     def loss_function(self, x, recon_x, mu, logvar):

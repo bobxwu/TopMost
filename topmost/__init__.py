@@ -12,6 +12,7 @@ from .data.basic_dataset import BasicDataset
 from .data.basic_dataset import RawDataset
 from .data.crosslingual_dataset import CrosslingualDataset
 from .data.dynamic_dataset import DynamicDataset
+from .data.dsl_dataset import DSLDataset
 from .data.download import download_dataset
 from .data import file_utils
 
